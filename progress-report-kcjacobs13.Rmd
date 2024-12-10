@@ -8,3 +8,118 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
+
+# Step 1: Scraping Hall of Fame Data for 2024
+
+First, scrape the Hall of Fame voting data for 2024 from Baseball Reference.
+
+```{r}
+library(rvest)
+library(dplyr)
+
+# Define the URL
+url <- "https://www.baseball-reference.com/awards/hof_2024.shtml"
+
+# Read the HTML and extract the tables
+html <- read_html(url)
+tables <- html_table(html)
+
+# Select the relevant table (assumes the first table is the correct one)
+raw_data <- tables[[1]]
+
+# Display the first few rows of the raw data
+head(raw_data)
+
+```
+
+# Step 2: Clean the Data
+
+The raw data does not have proper column names. Use the first row as the header and clean the dataset.
+
+```{r}
+# Extract the column names from the first row and clean the dataset
+actual_col_names <- raw_data[1, ]
+colnames(raw_data) <- actual_col_names
+cleaned_data <- raw_data[-1, ]
+
+# Display the first few rows of the cleaned data
+head(cleaned_data)
+
+```
+
+Now we adjuct the variable types.
+
+```{r}
+library(readr)
+# Make all column names unique
+colnames(cleaned_data) <- make.unique(colnames(cleaned_data))
+
+# Parse numeric columns, including Votes and %vote
+cleaned_data <- cleaned_data %>%
+  mutate(
+    Votes = readr::parse_number(Votes),
+    PercentVote = readr::parse_number(`%vote`)
+  )
+
+# Display the structure of the cleaned data
+str(cleaned_data)
+
+
+
+```
+
+# Step 3: Merge with existing Data
+
+Load the existing Hall of Fame dataset from the Lahman package and append the 2024 data.
+
+```{r}
+library(Lahman)
+
+# Load the existing Hall of Fame data
+hof_data <- HallOfFame
+
+# Select and rename columns to match the existing Hall of Fame table
+new_data <- cleaned_data %>%
+  select(
+    playerID = Name,
+    yearID = `YoB`,
+    votes = Votes,
+    needed = `PercentVote`,
+    inducted = `HOFm`
+  ) %>%
+  mutate(
+    yearID = 2024,
+    inducted = ifelse(inducted >= 75, "Y", "N"),
+    category = "Player"
+  )
+
+# Combine datasets
+extended_hof <- bind_rows(hof_data, new_data)
+
+# Save the combined dataset to a CSV file
+write.csv(extended_hof, file = "HallOfFame.csv", row.names = FALSE)
+
+```
+
+# Step 4: Data Visualization
+
+For fun, create a plot showing the percentage of votes received by players over time.
+
+```{r}
+library(ggplot2)
+
+# Plot the voting trends
+ggplot(data = extended_hof, aes(x = yearID, fill = inducted)) +
+  geom_bar() +
+  xlim(c(1936, 2024)) +
+  labs(
+    title = "Hall of Fame Voting Trends",
+    x = "Year",
+    y = "Number of Players",
+    fill = "Inducted"
+  )
+
+```
+
+The 2024 Hall of Fame voting data has been successfully scraped, cleaned, and integrated with the Lahman dataset. The expanded dataset has been saved as 'HallOfFame.csv'
+
